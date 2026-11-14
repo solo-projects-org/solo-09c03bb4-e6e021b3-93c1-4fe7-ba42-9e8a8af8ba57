@@ -1,0 +1,7 @@
+data/
+tests/
+samples/
+*.md
+.git/
+.gitignore
+.DS_Store

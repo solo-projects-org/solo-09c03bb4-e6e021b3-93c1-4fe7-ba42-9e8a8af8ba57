@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}<div class="banner error">{{ error }}</div>{% endif %}
+{% if notice %}<div class="banner notice">{{ notice }}</div>{% endif %}
+
+<div class="cards">
+  <section class="card">
+    <h2>1 · 上传交易修订</h2>
+    <p class="hint">
+      列：<code>event_id, account_id, occurred_at, ingested_at, amount, action</code>。
+      时刻为 UTC 秒整数；<code>action</code> 取 <code>revise</code> 或 <code>cancel</code>。
+      同一事件同一 <code>ingested_at</code> 若出现不同取值，整批拒收。
+    </p>
+    <form method="post" action="/upload-transactions" enctype="multipart/form-data">
+      <input type="file" name="file" accept=".csv,text/csv" required>
+      <button type="submit">上传交易 CSV</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>2 · 上传样本</h2>
+    <p class="hint">
+      列：<code>sample_id, account_id, audit_at, label</code>。
+      <code>audit_at</code> 为 UTC 秒；<code>label</code> 只能是 <code>0</code> 或 <code>1</code>。
+    </p>
+    <form method="post" action="/upload-samples" enctype="multipart/form-data">
+      <input type="file" name="file" accept=".csv,text/csv" required>
+      <button type="submit">上传样本 CSV</button>
+    </form>
+  </section>
+</div>
+
+<section class="card" style="margin-top:18px">
+  <h2>3 · 生成报告</h2>
+  <p class="hint">
+    点击生成时冻结当前已入库的源数据版本（批次高水位）。之后补传的批次、
+    包括迟到补录，都不会进入这份报告。报告写入磁盘成功后才开放下载。
+  </p>
+  <form method="post" action="/reports">
+    <button type="submit">按当前版本生成训练 CSV</button>
+  </form>
+  <p class="sticky-note" style="margin-bottom:0">
+    口径：每个样本在审核时刻 <code>T</code> 取该账户每个事件「入库时刻 ≤ T」的最新修订；
+    撤销不计；仅当该修订自身的发生时刻落在 <code>[T−7d, T)</code> 才计入笔数与金额。
+    改到窗外的事件不会沿用旧值。
+  </p>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <h2>已生成的报告</h2>
+  {% if reports %}
+  <table>
+    <thead><tr>
+      <th>报告</th><th>状态</th><th>样本数</th>
+      <th>交易批次高水位</th><th>样本批次高水位</th>
+      <th>创建时间 (UTC)</th><th>完成时间 (UTC)</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for r in reports %}
+      <tr>
+        <td class="mono"><a href="/reports/{{ r.report_id }}">{{ r.report_id[:12] }}</a></td>
+        <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
+        <td class="num">{{ r.sample_count if r.sample_count is not none else '—' }}</td>
+        <td class="num">#{{ r.txn_batch_hi }}</td>
+        <td class="num">#{{ r.sample_batch_hi }}</td>
+        <td class="nw">{{ r.created_at | ts }}</td>
+        <td class="nw">{{ r.completed_at | ts if r.completed_at else '—' }}</td>
+        <td><a href="/reports/{{ r.report_id }}">查看</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">暂无报告。</p>
+  {% endif %}
+</section>
+
+<section class="card" style="margin-top:18px">
+  <h2>已入库批次（不可变）</h2>
+  {% if batches %}
+  <div class="scroll" style="max-height:42vh">
+  <table>
+    <thead><tr>
+      <th>批次</th><th>类型</th><th>文件名</th><th class="num">行数</th>
+      <th class="num">字节</th><th>SHA-256</th><th>入库时间 (UTC)</th>
+    </tr></thead>
+    <tbody>
+    {% for b in batches %}
+      <tr>
+        <td class="num">#{{ b.id }}</td>
+        <td>{{ '交易' if b.kind == 'transactions' else '样本' }}</td>
+        <td>{{ b.filename }}</td>
+        <td class="num">{{ b.stored_rows }}</td>
+        <td class="num">{{ b.byte_size }}</td>
+        <td class="mono">{{ b.sha256[:20] }}…</td>
+        <td class="nw">{{ b.uploaded_at | ts }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">尚未上传任何文件。</p>
+  {% endif %}
+</section>
+{% endblock %}

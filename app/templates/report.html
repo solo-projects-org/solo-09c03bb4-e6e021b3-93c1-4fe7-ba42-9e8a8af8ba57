@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}报告 {{ r.report_id[:12] }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div>
+    <h2 style="margin:0">报告 <span class="mono">{{ r.report_id[:12] }}</span>
+      <span class="pill {{ r.status }}">{{ r.status }}</span></h2>
+    <div class="sticky-note">创建 {{ r.created_at | ts }} · 冻结源版本
+      交易 ≤ #{{ r.manifest.txn_batch_hi }} / 样本 ≤ #{{ r.manifest.sample_batch_hi }}</div>
+  </div>
+  <div class="spacer"></div>
+  {% if r.downloadable %}
+    <a href="/reports/{{ r.report_id }}/download"><button type="button">下载训练 CSV</button></a>
+  {% else %}
+    <button type="button" disabled>下载未开放</button>
+  {% endif %}
+  <form method="post" action="/reports/{{ r.report_id }}/regenerate" style="margin:0">
+    <button type="button" class="secondary" onclick="this.closest('form').submit()">
+      按原版本重取</button>
+  </form>
+</div>
+
+{% if r.status == 'failed' %}
+<div class="banner error">生成失败：{{ r.error }}<br>
+  源数据版本仍被锁定，可点击「按原版本重取」重试，不会混入期间补传。</div>
+{% elif r.status in ('pending','running') %}
+<div class="banner info">报告正在按冻结版本生成，完成后此页会显示预览与下载入口。
+  <a href="/reports/{{ r.report_id }}">刷新</a></div>
+{% elif not r.downloadable %}
+<div class="banner error">{{ r.integrity_error or '报告文件不可用，下载已关闭。' }}</div>
+{% endif %}
+
+<section class="card">
+  <h2>训练特征预览{% if truncated %}（前 {{ rows | length }} / 共 {{ total }} 行）{% endif %}</h2>
+  {% if rows %}
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        {% for h in headers %}<th class="{% if h in ('txn_count_7d','txn_amount_7d','label','audit_at','window_start_at','window_end_at') %}num{% endif %}">{{ h }}</th>{% endfor %}
+      </tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          {% for cell in row %}
+            <td class="{% if loop.index0 >= 2 %}num{% else %}mono{% endif %}">{{ cell }}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="empty">尚无可见行（报告未完成或无样本）。</p>
+  {% endif %}
+  <p class="sticky-note">
+    <code>audit_at</code> / <code>window_start_at</code> / <code>window_end_at</code> 均为 UTC 秒；
+    窗口左闭右开。金额为两位小数十进制字符串。
+  </p>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <h2>冻结的源版本清单</h2>
+  <details open>
+    <summary>查看批次与摘要</summary>
+    <div class="manifest" style="margin-top:10px">
+    <dl class="kv">
+      <dt>源数据摘要 (SHA-256)</dt>
+      <dd class="mono">{{ r.manifest.source_digest }}</dd>
+      <dt>交易行数（可见）</dt><dd>{{ r.manifest.transaction_rows }}</dd>
+      <dt>样本行数（可见）</dt><dd>{{ r.manifest.sample_rows }}</dd>
+      <dt>报告输出 SHA-256</dt>
+      <dd class="mono">{{ r.output_sha256 or '（生成中）' }}</dd>
+      <dt>输出字节</dt><dd>{{ r.output_bytes or '—' }}</dd>
+      <dt>口径</dt><dd class="mono">{{ r.manifest.spec }}</dd>
+    </dl>
+    </div>
+    {% for key, label in [('txn_batches','交易批次'),('sample_batches','样本批次')] %}
+      <h3 style="font-size:14px;margin:16px 0 6px">{{ label }}</h3>
+      <table>
+        <thead><tr><th>批次</th><th>文件名</th><th class="num">行数</th><th>SHA-256</th></tr></thead>
+        <tbody>
+        {% for b in r.manifest[key] %}
+          <tr><td class="num">#{{ b.batch_id }}</td><td>{{ b.filename }}</td>
+              <td class="num">{{ b.stored_rows }}</td>
+              <td class="mono">{{ b.sha256 }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
+  </details>
+</section>
+{% endblock %}

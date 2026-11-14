@@ -1,0 +1,27 @@
+services:
+  features:
+    build: .
+    image: ptf-features:1.0.0
+    container_name: ptf-features
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      DATA_DIR: /data
+      MAX_UPLOAD_BYTES: "67108864"
+      WORKER_POLL_MS: "400"
+      PREVIEW_MAX_ROWS: "2000"
+    volumes:
+      - ptf-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=2).status==200 else 1)"]
+      interval: 20s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  ptf-data:
